@@ -1,0 +1,71 @@
+import logging
+from telegram import Update, Bot, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from flask import Flask, request
+import threading
+import asyncio
+
+# Настройка
+TOKEN = "7978477226:AAFvVITAIa-lPFC1JgNtkj9qp9wgxrEtuzU"
+IMEI = "9171906833"
+CHAT_ID = None
+
+# Меню
+MENU_KEYBOARD = ReplyKeyboardMarkup(
+    [["📍 Текущие координаты", "⚙ Настройки"], ["📊 История", "🆘 Помощь"]],
+    resize_keyboard=True
+)
+
+app = Flask(__name__)
+bot = Bot(TOKEN)
+
+# ===== Telegram Handlers =====
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global CHAT_ID
+    CHAT_ID = update.effective_chat.id
+    await update.message.reply_text(
+        "🚀 Добро пожаловать в GPS-мониторинг!",
+        reply_markup=MENU_KEYBOARD
+    )
+    print(f"Активирован чат: {CHAT_ID}")
+
+async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "📍 Текущие координаты":
+        await update.message.reply_text("Последние координаты: 55.7558, 37.6176")
+    elif text == "⚙ Настройки":
+        await update.message.reply_text("Настройки трекера...")
+    elif text == "📊 История":
+        await update.message.reply_text("График перемещений...")
+    elif text == "🆘 Помощь":
+        await update.message.reply_text("Инструкция по использованию...")
+
+# ===== Flask Server =====
+@app.route('/tracker', methods=['POST'])
+async def tracker_data():
+    data = request.get_json() or request.form
+    if str(data.get('imei')) == IMEI and CHAT_ID:
+        await bot.send_message(
+            chat_id=CHAT_ID,
+            text=f"📍 Новые данные:\nШирота: {data.get('lat')}\nДолгота: {data.get('lon')}",
+            reply_markup=MENU_KEYBOARD
+        )
+    return "OK"
+
+def run_flask():
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=5000)
+
+# ===== Main =====
+def run_bot():
+    app = Application.builder().token(TOKEN).build()
+    
+    # Обработчики
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu))
+    
+    app.run_polling()
+
+if __name__ == '__main__':
+    threading.Thread(target=run_flask, daemon=True).start()
+    run_bot()
